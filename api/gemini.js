@@ -12,8 +12,8 @@ export default async function handler(req, res) {
   if (!prompt) return res.status(400).json({ error: 'prompt required' });
 
   try {
-    // gemini-2.5-flash-preview-05-20 사용 (최신 안정 버전)
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+    // gemini-2.0-flash 은 안정적이고 googleSearch 지원
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
     const body = {
       contents: [{ parts: [{ text: prompt }] }],
@@ -43,7 +43,7 @@ export default async function handler(req, res) {
       ?.join('') || '';
 
     if (!text) {
-      console.error('Empty response from Gemini:', JSON.stringify(data));
+      console.error('Empty response:', JSON.stringify(data).slice(0, 500));
       return res.status(500).json({ error: '응답이 비어있습니다. 잠시 후 다시 시도해주세요.' });
     }
 
