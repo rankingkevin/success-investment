@@ -1,4 +1,4 @@
-export const maxDuration = 60; // Vercel 타임아웃 60초로 확장
+export const maxDuration = 60;
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -13,53 +13,76 @@ export default async function handler(req, res) {
   const { prompt, type } = req.body;
   if (!prompt) return res.status(400).json({ error: 'prompt required' });
 
-  // 50초 AbortController (Vercel 60초 한도 내 안전 마진)
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 50000);
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    // v1beta + gemini-2.5-flash-preview-05-20 : googleSearch 지원 최신 안정 모델
+    // 만약 또 404나면 gemini-1.5-pro-latest 로 폴백
+    const MODELS = [
+      'gemini-2.5-flash-preview-05-20',
+      'gemini-1.5-pro-latest',
+      'gemini-1.5-flash-001',
+    ];
 
-    const body = {
-      contents: [{ parts: [{ text: prompt }] }],
-      tools: [{ googleSearch: {} }],
-      generationConfig: {
-        temperature: 0.5,
-        maxOutputTokens: 4096, // 8192→4096 줄여서 응답속도 개선
+    let lastError = null;
+    let text = '';
+
+    for (const model of MODELS) {
+      // 첫 모델만 googleSearch 시도, 나머지는 없이
+      const useSearch = model === MODELS[0];
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+      const body = {
+        contents: [{ parts: [{ text: prompt }] }],
+        ...(useSearch ? { tools: [{ googleSearch: {} }] } : {}),
+        generationConfig: {
+          temperature: 0.5,
+          maxOutputTokens: 4096,
+        }
+      };
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error(`Model ${model} error ${response.status}:`, errText);
+        lastError = `${model}: ${response.status}`;
+        continue; // 다음 모델 시도
       }
-    };
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
+      const data = await response.json();
+      text = data?.candidates?.[0]?.content?.parts
+        ?.filter(p => p.text)
+        ?.map(p => p.text)
+        ?.join('') || '';
+
+      if (text) {
+        console.log(`Success with model: ${model}`);
+        break; // 성공하면 루프 종료
+      } else {
+        console.error(`Empty response from ${model}:`, JSON.stringify(data).slice(0, 300));
+        lastError = `${model}: empty response`;
+      }
+    }
 
     clearTimeout(timeout);
 
-    if (!response.ok) {
-      const err = await response.text();
-      console.error('Gemini API error:', err);
-      return res.status(response.status).json({ error: err });
-    }
-
-    const data = await response.json();
-    const text = data?.candidates?.[0]?.content?.parts
-      ?.filter(p => p.text)
-      ?.map(p => p.text)
-      ?.join('') || '';
-
     if (!text) {
-      console.error('Empty response:', JSON.stringify(data).slice(0, 500));
-      return res.status(500).json({ error: '응답이 비어있습니다. 잠시 후 다시 시도해주세요.' });
+      return res.status(500).json({ error: `모든 모델 시도 실패: ${lastError}` });
     }
 
     return res.status(200).json({ result: text, type });
+
   } catch (err) {
     clearTimeout(timeout);
     if (err.name === 'AbortError') {
-      return res.status(504).json({ error: '분석 시간이 초과되었습니다 (50초). 다시 시도해주세요.' });
+      return res.status(504).json({ error: '분석 시간 초과 (50초). 다시 시도해주세요.' });
     }
     console.error('Handler error:', err);
     return res.status(500).json({ error: err.message });
