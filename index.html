@@ -164,6 +164,85 @@
   .btn-analyze-all.loading .btn-icon { display:none; }
   @keyframes spin { to { transform:rotate(360deg); } }
 
+  /* ── 진행률 패널 ── */
+  .progress-panel {
+    display:none;
+    background:#fff;
+    border:1.5px solid var(--border-b);
+    border-radius:14px;
+    padding:20px 24px;
+    margin:12px 0 4px;
+    box-shadow:var(--shadow-b);
+  }
+  .progress-panel.active { display:block; }
+
+  .progress-header {
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:14px;
+  }
+  .progress-title {
+    font-size:14px; font-weight:700; color:var(--navy);
+    display:flex; align-items:center; gap:8px;
+  }
+  .progress-pct {
+    font-family:'Orbitron',sans-serif; font-size:22px; font-weight:900;
+    color:var(--blue2);
+    transition:all .4s ease;
+  }
+
+  .progress-bar-wrap {
+    height:10px; background:var(--card3);
+    border-radius:6px; overflow:hidden; margin-bottom:16px;
+  }
+  .progress-bar-fill {
+    height:100%; border-radius:6px;
+    background:linear-gradient(90deg,#2596e8,#e83e8c);
+    transition:width .6s cubic-bezier(.4,0,.2,1);
+    position:relative;
+  }
+  .progress-bar-fill::after {
+    content:'';
+    position:absolute; top:0; left:0; right:0; bottom:0;
+    background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.35) 50%,transparent 100%);
+    animation:shimmer 1.5s infinite;
+  }
+  @keyframes shimmer { 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
+
+  .progress-steps {
+    display:grid; grid-template-columns:repeat(4,1fr); gap:10px;
+  }
+  .progress-step {
+    display:flex; align-items:center; gap:8px;
+    padding:9px 12px; border-radius:10px;
+    border:1.5px solid var(--border);
+    background:var(--card2);
+    transition:all .3s;
+  }
+  .progress-step.running {
+    border-color:var(--blue2);
+    background:rgba(37,150,232,0.07);
+  }
+  .progress-step.done {
+    border-color:var(--green);
+    background:rgba(5,150,105,0.07);
+  }
+  .progress-step.error {
+    border-color:var(--red);
+    background:rgba(220,38,38,0.06);
+  }
+  .step-icon { font-size:18px; flex-shrink:0; }
+  .step-info { flex:1; min-width:0; }
+  .step-name { font-size:12px; font-weight:700; color:var(--navy); }
+  .step-status { font-size:11px; color:var(--text3); margin-top:2px; }
+  .step-status.running { color:var(--blue2); }
+  .step-status.done    { color:var(--green); }
+  .step-status.error   { color:var(--red); }
+  .step-pct {
+    font-family:'JetBrains Mono',monospace; font-size:12px;
+    font-weight:700; color:var(--text4); flex-shrink:0;
+  }
+  .step-pct.done { color:var(--green); }
+
   /* ── 메인 ── */
   .main { max-width:1440px; margin:0 auto; padding:20px 28px 40px; position:relative; z-index:1; }
 
@@ -495,13 +574,61 @@
   </div>
 </div>
 
-<!-- 전체 분석 버튼 -->
+<!-- 전체 분석 버튼 + 진행률 패널 -->
 <div class="analyze-all-bar">
   <button class="btn-analyze-all" id="btnAll" onclick="runAll()">
     <span class="btn-icon">⚡</span>
     <div class="spin"></div>
     전체 분석 시작 — 대시보드 · 마켓이슈 · 주간리포트 동시 분석
   </button>
+
+  <!-- 진행률 패널 -->
+  <div class="progress-panel" id="progressPanel">
+    <div class="progress-header">
+      <div class="progress-title">
+        <span id="progressEmoji">⏳</span>
+        <span id="progressMsg">분석 준비 중...</span>
+      </div>
+      <div class="progress-pct" id="progressPct">0%</div>
+    </div>
+    <div class="progress-bar-wrap">
+      <div class="progress-bar-fill" id="progressBar" style="width:0%"></div>
+    </div>
+    <div class="progress-steps">
+      <div class="progress-step" id="step-stock">
+        <div class="step-icon">📡</div>
+        <div class="step-info">
+          <div class="step-name">시장 데이터</div>
+          <div class="step-status" id="step-stock-status">대기 중</div>
+        </div>
+        <div class="step-pct" id="step-stock-pct">10%</div>
+      </div>
+      <div class="progress-step" id="step-dashboard">
+        <div class="step-icon">📊</div>
+        <div class="step-info">
+          <div class="step-name">대시보드 분석</div>
+          <div class="step-status" id="step-dashboard-status">대기 중</div>
+        </div>
+        <div class="step-pct" id="step-dashboard-pct">35%</div>
+      </div>
+      <div class="progress-step" id="step-issues">
+        <div class="step-icon">🌍</div>
+        <div class="step-info">
+          <div class="step-name">마켓이슈 분석</div>
+          <div class="step-status" id="step-issues-status">대기 중</div>
+        </div>
+        <div class="step-pct" id="step-issues-pct">30%</div>
+      </div>
+      <div class="progress-step" id="step-report">
+        <div class="step-icon">📋</div>
+        <div class="step-info">
+          <div class="step-name">주간리포트 생성</div>
+          <div class="step-status" id="step-report-status">대기 중</div>
+        </div>
+        <div class="step-pct" id="step-report-pct">25%</div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="main">
@@ -743,31 +870,112 @@ async function fetchUsdKrw() {
   } catch(e) { console.warn('환율 조회 실패, 기본값 사용'); }
 }
 
-// ═══ 전체 분석 (동시 실행) ═══
+// ═══ 진행률 관리 ═══
+// 각 단계 가중치 합계 = 100
+const STEPS = {
+  stock:     { weight: 10, el: 'step-stock' },
+  dashboard: { weight: 35, el: 'step-dashboard' },
+  issues:    { weight: 30, el: 'step-issues' },
+  report:    { weight: 25, el: 'step-report' },
+};
+let currentPct = 0;
+
+function progressShow() {
+  document.getElementById('progressPanel').classList.add('active');
+  currentPct = 0;
+  setProgress(0, '⏳', '분석 준비 중...');
+  // 모든 스텝 초기화
+  Object.values(STEPS).forEach(s => setStep(s.el, 'idle', '대기 중', s.weight + '%'));
+}
+
+function progressHide() {
+  document.getElementById('progressPanel').classList.remove('active');
+}
+
+function setProgress(pct, emoji, msg) {
+  currentPct = pct;
+  document.getElementById('progressPct').textContent = pct + '%';
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressEmoji').textContent = emoji;
+  document.getElementById('progressMsg').textContent = msg;
+}
+
+function setStep(elId, state, statusMsg, pctLabel) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.className = 'progress-step' + (state !== 'idle' ? ' ' + state : '');
+  const statusEl = el.querySelector('.step-status');
+  const pctEl    = el.querySelector('.step-pct');
+  if (statusEl) { statusEl.textContent = statusMsg; statusEl.className = 'step-status ' + state; }
+  if (pctEl && pctLabel) { pctEl.textContent = pctLabel; pctEl.className = 'step-pct' + (state === 'done' ? ' done' : ''); }
+}
+
+function stepStart(key) {
+  const s = STEPS[key];
+  setStep(s.el, 'running', '분석 중...', s.weight + '%');
+  setProgress(currentPct, '⚙️', stepLabel(key) + ' 분석 중...');
+}
+
+function stepDone(key, success) {
+  const s = STEPS[key];
+  const addPct = success ? s.weight : Math.floor(s.weight * 0.5);
+  const newPct = Math.min(100, currentPct + addPct);
+  if (success) {
+    setStep(s.el, 'done', '✅ 완료', '✓');
+  } else {
+    setStep(s.el, 'error', '❌ 오류 발생', '!');
+  }
+  setProgress(newPct, '⚙️', '분석 진행 중...');
+}
+
+function stepLabel(key) {
+  const map = { stock:'시장 데이터', dashboard:'대시보드', issues:'마켓이슈', report:'주간리포트' };
+  return map[key] || key;
+}
+
+// ═══ 전체 분석 (진행률 포함 병렬 실행) ═══
 async function runAll() {
-  setBtnLoading('btnAll', true);
+  const btn = document.getElementById('btnAll');
+  btn.disabled = true;
+  btn.classList.add('loading');
+  btn.querySelector('.spin').style.display = 'block';
+  btn.querySelector('.btn-icon').style.display = 'none';
 
-  // 주가 + 환율 먼저 로드
-  await Promise.allSettled([loadMarketGauges(), fetchUsdKrw()]);
-
+  progressShow();
   const today = new Date().toLocaleDateString('ko-KR');
 
-  // 세 가지 분석 병렬 실행
-  const [dashResult, issueResult, reportResult] = await Promise.allSettled([
-    runDashboardAnalysis(today),
-    runIssuesAnalysis(today),
-    runReportAnalysis(today),
+  // ① 주가 + 환율 (10%)
+  stepStart('stock');
+  try {
+    await Promise.all([loadMarketGauges(), fetchUsdKrw()]);
+    stepDone('stock', true);
+  } catch(e) {
+    stepDone('stock', false);
+  }
+
+  // ② 대시보드 + 마켓이슈 + 리포트 병렬
+  stepStart('dashboard');
+  stepStart('issues');
+  stepStart('report');
+
+  const [dashR, issueR, reportR] = await Promise.allSettled([
+    runDashboardAnalysis(today).then(() => stepDone('dashboard', true)).catch(e => { console.error(e); stepDone('dashboard', false); }),
+    runIssuesAnalysis(today).then(() => stepDone('issues', true)).catch(e => { console.error(e); stepDone('issues', false); }),
+    runReportAnalysis(today).then(() => stepDone('report', true)).catch(e => { console.error(e); stepDone('report', false); }),
   ]);
 
-  if (dashResult.status === 'rejected')
-    console.error('대시보드 오류:', dashResult.reason);
-  if (issueResult.status === 'rejected')
-    console.error('마켓이슈 오류:', issueResult.reason);
-  if (reportResult.status === 'rejected')
-    console.error('리포트 오류:', reportResult.reason);
-
+  // 완료 처리
+  const allOk = [dashR, issueR, reportR].every(r => r.status === 'fulfilled');
+  setProgress(100, allOk ? '✅' : '⚠️', allOk ? '모든 분석 완료!' : '일부 분석 완료 (오류 있음)');
   setLastUpdate();
-  setBtnLoading('btnAll', false);
+
+  // 3초 후 패널 숨김
+  setTimeout(() => progressHide(), 3000);
+
+  btn.disabled = false;
+  btn.classList.remove('loading');
+  btn.querySelector('.spin').style.display = 'none';
+  btn.querySelector('.btn-icon').style.display = '';
 }
 
 // ── 로딩 상태 표시 ──
