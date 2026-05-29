@@ -321,16 +321,51 @@
 
   /* 섹터 히트맵 */
   .sector-card { grid-column:1/3; }
-  .sector-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+  .sector-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
+
   .sector-item {
-    padding:14px 10px; border-radius:11px; text-align:center;
-    cursor:default; transition:transform .15s; border:1.5px solid transparent;
+    padding:16px; border-radius:12px;
+    border:1.5px solid transparent;
+    transition:all .2s; cursor:default;
+    display:flex; flex-direction:column; gap:0;
   }
-  .sector-item:hover { transform:scale(1.04); }
-  .sector-item .s-icon { font-size:22px; margin-bottom:6px; }
-  .sector-item .s-name { font-size:12px; font-weight:700; margin-bottom:4px; }
-  .sector-item .s-score { font-size:17px; font-weight:900; font-family:'Orbitron',sans-serif; }
-  .sector-item .s-label { font-size:10px; margin-top:3px; opacity:.75; }
+  .sector-item:hover { transform:translateY(-2px); box-shadow:var(--shadow-b); }
+
+  .sector-top {
+    display:flex; align-items:center; gap:10px; margin-bottom:10px;
+  }
+  .s-icon { font-size:24px; flex-shrink:0; }
+  .s-meta { flex:1; min-width:0; }
+  .s-name { font-size:13px; font-weight:800; margin-bottom:2px; }
+  .s-score-wrap { display:flex; align-items:baseline; gap:4px; }
+  .s-score { font-size:20px; font-weight:900; font-family:'Orbitron',sans-serif; }
+  .s-score-unit { font-size:10px; font-weight:400; }
+  .s-temp-badge {
+    font-size:10px; font-weight:700; padding:3px 8px;
+    border-radius:20px; flex-shrink:0; white-space:nowrap;
+  }
+
+  .sector-divider { height:1px; background:rgba(0,0,0,0.06); margin:0 0 10px; }
+
+  .s-status { font-size:12px; font-weight:600; margin-bottom:6px; }
+
+  .s-guide {
+    font-size:12px; line-height:1.65; color:var(--text2);
+    padding:8px 10px; border-radius:8px;
+    background:rgba(255,255,255,0.6);
+    border-left:3px solid transparent;
+    margin-bottom:8px;
+  }
+
+  .s-picks {
+    display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+  }
+  .s-picks-label { font-size:11px; color:var(--text3); font-weight:600; flex-shrink:0; }
+  .s-pick-tag {
+    font-size:11px; font-weight:700; padding:2px 8px;
+    border-radius:6px; background:rgba(255,255,255,0.7);
+    border:1px solid rgba(0,0,0,0.08); color:var(--navy);
+  }
 
   /* 핫 키워드 */
   .keyword-card { grid-column:3/4; }
@@ -1090,9 +1125,17 @@ async function runDashboardAnalysis(today) {
   const prompt1 = `오늘(${today}) 주식시장 기준. JSON만 반환. JSON 외 텍스트 절대 금지. 한국어.
 
 {
-  "sectorSummary": "현재 시장 섹터 흐름 종합 한줄 (예: AI·반도체 주도, 방산·바이오 동반 상승 흐름)",
+  "sectorSummary": "이번주 시장 전체 흐름 요약 및 투자 액션 가이드 2문장 (예: AI·반도체 강세 지속으로 관련주 비중 유지 권장. 방산은 신규 진입 검토, 이차전지는 저점 대기.)",
   "sectors": [
-    {"name":"섹터명","icon":"이모지","score":숫자(0-100),"temp":"매우뜨거움|뜨거움|보통|차가움","comment":"동향 12자이내"}
+    {
+      "name": "섹터명",
+      "icon": "이모지",
+      "score": 숫자(0-100),
+      "temp": "매우뜨거움|뜨거움|보통|차가움",
+      "status": "현황 한줄(15자이내, 예: AI칩 수요 폭발)",
+      "guide": "투자 가이드 1-2문장 (예: 단기 과열 주의, 분할매수 권장. 엔비디아 눌림목 시 매수 적기.)",
+      "picks": ["주목종목1", "주목종목2"]
+    }
   ],
   "keywords": [{"text":"키워드","score":숫자(0-100)}],
   "bitcoin": {
@@ -1168,23 +1211,50 @@ function renderSectors(sectors, summary) {
     return;
   }
 
-  // 종합 코멘트 배너
+  // 온도별 스타일
+  const TEMP_STYLE = {
+    '매우뜨거움': { badge:'background:rgba(220,38,38,0.15);color:#b91c1c;border:1px solid rgba(220,38,38,0.3)', guide:'border-left-color:#ef4444', label:'🔥 매우뜨거움' },
+    '뜨거움':    { badge:'background:rgba(234,88,12,0.12);color:#c2410c;border:1px solid rgba(234,88,12,0.3)', guide:'border-left-color:#f97316', label:'🌡 뜨거움' },
+    '보통':      { badge:'background:rgba(26,127,212,0.10);color:#1a7fd4;border:1px solid rgba(26,127,212,0.25)', guide:'border-left-color:#60a5fa', label:'➡ 보통' },
+    '차가움':    { badge:'background:rgba(74,122,155,0.10);color:#4a7a9b;border:1px solid rgba(74,122,155,0.2)', guide:'border-left-color:#94a3b8', label:'❄ 차가움' },
+  };
+
+  // 종합 액션 배너
   const summaryBanner = summary ? `
-    <div style="grid-column:1/-1; background:linear-gradient(135deg,rgba(26,127,212,0.08),rgba(232,62,140,0.06));
-      border:1px solid var(--border-b); border-radius:10px; padding:10px 16px;
-      display:flex; align-items:center; gap:10px; margin-bottom:4px;">
-      <span style="font-size:18px">📌</span>
-      <span style="font-size:13px; font-weight:600; color:var(--navy)">${summary}</span>
+    <div style="grid-column:1/-1;
+      background:linear-gradient(135deg,rgba(13,74,138,0.07),rgba(232,62,140,0.05));
+      border:1.5px solid var(--border-b); border-radius:12px; padding:14px 18px;
+      display:flex; align-items:flex-start; gap:12px;">
+      <span style="font-size:22px;flex-shrink:0">🎯</span>
+      <div>
+        <div style="font-size:12px;font-weight:800;color:var(--blue);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">이번 주 투자 액션 가이드</div>
+        <div style="font-size:14px;font-weight:600;color:var(--navy);line-height:1.7">${summary}</div>
+      </div>
     </div>` : '';
 
   grid.innerHTML = summaryBanner + sectors.map(s => {
     const c = sc(s.temp);
-    const tempLabel = {'매우뜨거움':'🔥 매우뜨거움','뜨거움':'🌡 뜨거움','보통':'➡ 보통','차가움':'❄ 차가움'}[s.temp] || s.temp;
-    return `<div class="sector-item" style="background:${c.bg};border-color:${c.bd}">
-      <div class="s-icon">${s.icon||'📈'}</div>
-      <div class="s-name" style="color:${c.sc}">${s.name}</div>
-      <div class="s-score" style="color:${c.sc}">${s.score}<span style="font-size:10px;font-family:sans-serif;font-weight:400"> pt</span></div>
-      <div class="s-label" style="color:${c.sc};font-size:10px;margin-top:3px">${s.comment || s.label || tempLabel}</div>
+    const ts = TEMP_STYLE[s.temp] || TEMP_STYLE['보통'];
+    const picks = (s.picks || []).map(p =>
+      `<span class="s-pick-tag">${p}</span>`).join('');
+
+    return `
+    <div class="sector-item" style="background:${c.bg};border-color:${c.bd}">
+      <div class="sector-top">
+        <div class="s-icon">${s.icon||'📈'}</div>
+        <div class="s-meta">
+          <div class="s-name" style="color:${c.sc}">${s.name}</div>
+          <div class="s-score-wrap">
+            <div class="s-score" style="color:${c.sc}">${s.score}</div>
+            <div class="s-score-unit" style="color:${c.sc}">pt</div>
+          </div>
+        </div>
+        <div class="s-temp-badge" style="${ts.badge}">${ts.label}</div>
+      </div>
+      <div class="sector-divider"></div>
+      ${s.status ? `<div class="s-status" style="color:${c.sc}">📊 ${s.status}</div>` : ''}
+      ${s.guide ? `<div class="s-guide" style="${ts.guide}">${s.guide}</div>` : ''}
+      ${picks ? `<div class="s-picks"><span class="s-picks-label">주목:</span>${picks}</div>` : ''}
     </div>`;
   }).join('');
 }
