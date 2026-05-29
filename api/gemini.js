@@ -17,67 +17,74 @@ export default async function handler(req, res) {
   const timeout = setTimeout(() => controller.abort(), 50000);
 
   try {
-    // v1beta + gemini-2.5-flash-preview-05-20 : googleSearch 지원 최신 안정 모델
-    // 만약 또 404나면 gemini-1.5-pro-latest 로 폴백
+    // 실제 사용 가능한 모델 목록 기반 (v1beta, generateContent 지원 확인됨)
     const MODELS = [
-      'gemini-2.5-flash-preview-05-20',
-      'gemini-1.5-pro-latest',
-      'gemini-1.5-flash-001',
+      { name: 'gemini-2.5-flash', search: true  },
+      { name: 'gemini-2.0-flash', search: true  },
+      { name: 'gemini-2.5-pro',   search: false },
     ];
 
     let lastError = null;
-    let text = '';
+    let resultText = '';
+    let usedModel = '';
 
-    for (const model of MODELS) {
-      // 첫 모델만 googleSearch 시도, 나머지는 없이
-      const useSearch = model === MODELS[0];
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    for (const m of MODELS) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${m.name}:generateContent?key=${apiKey}`;
 
       const body = {
         contents: [{ parts: [{ text: prompt }] }],
-        ...(useSearch ? { tools: [{ googleSearch: {} }] } : {}),
+        ...(m.search ? { tools: [{ googleSearch: {} }] } : {}),
         generationConfig: {
           temperature: 0.5,
           maxOutputTokens: 4096,
         }
       };
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
+      let response;
+      try {
+        response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+      } catch (fetchErr) {
+        lastError = `${m.name}: fetch 실패 - ${fetchErr.message}`;
+        console.error(lastError);
+        continue;
+      }
 
       if (!response.ok) {
         const errText = await response.text();
-        console.error(`Model ${model} error ${response.status}:`, errText);
-        lastError = `${model}: ${response.status}`;
-        continue; // 다음 모델 시도
+        lastError = `${m.name}: HTTP ${response.status}`;
+        console.error(`Model ${m.name} error ${response.status}:`, errText);
+        continue;
       }
 
       const data = await response.json();
-      text = data?.candidates?.[0]?.content?.parts
+      const text = data?.candidates?.[0]?.content?.parts
         ?.filter(p => p.text)
         ?.map(p => p.text)
         ?.join('') || '';
 
       if (text) {
-        console.log(`Success with model: ${model}`);
-        break; // 성공하면 루프 종료
+        resultText = text;
+        usedModel = m.name;
+        console.log(`✅ Success with model: ${m.name}`);
+        break;
       } else {
-        console.error(`Empty response from ${model}:`, JSON.stringify(data).slice(0, 300));
-        lastError = `${model}: empty response`;
+        lastError = `${m.name}: 빈 응답`;
+        console.error(`Empty response from ${m.name}:`, JSON.stringify(data).slice(0, 300));
       }
     }
 
     clearTimeout(timeout);
 
-    if (!text) {
-      return res.status(500).json({ error: `모든 모델 시도 실패: ${lastError}` });
+    if (!resultText) {
+      return res.status(500).json({ error: `분석 실패: ${lastError || '알 수 없는 오류'}` });
     }
 
-    return res.status(200).json({ result: text, type });
+    return res.status(200).json({ result: resultText, type, model: usedModel });
 
   } catch (err) {
     clearTimeout(timeout);
