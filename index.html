@@ -878,12 +878,11 @@ async function fetchUsdKrw() {
 }
 
 // ═══ 진행률 관리 ═══
-// 각 단계 가중치 합계 = 100
 const STEPS = {
-  stock:     { weight: 10, el: 'step-stock' },
-  dashboard: { weight: 35, el: 'step-dashboard' },
-  issues:    { weight: 30, el: 'step-issues' },
-  report:    { weight: 25, el: 'step-report' },
+  stock:      { weight: 8,  el: 'step-stock' },
+  dashboard:  { weight: 37, el: 'step-dashboard' },
+  issues:     { weight: 28, el: 'step-issues' },
+  report:     { weight: 27, el: 'step-report' },
 };
 let currentPct = 0;
 
@@ -922,6 +921,12 @@ function stepStart(key) {
   const s = STEPS[key];
   setStep(s.el, 'running', '분석 중...', s.weight + '%');
   setProgress(currentPct, '⚙️', stepLabel(key) + ' 분석 중...');
+  // 각 단계 시작 시 해당 가중치의 30%를 미리 올려서 진행감 부여
+  const preAdd = Math.floor(s.weight * 0.3);
+  const newPct = Math.min(99, currentPct + preAdd);
+  currentPct = newPct;
+  document.getElementById('progressPct').textContent = newPct + '%';
+  document.getElementById('progressBar').style.width = newPct + '%';
 }
 
 function stepDone(key, success) {
@@ -1044,39 +1049,61 @@ async function runDashboardAnalysis(today) {
   setLoading('keywordList', '키워드 분석 중...');
   setLoading('recommendContent', '추천 종목 분석 중...');
 
-  const prompt = `오늘 날짜: ${today}
-
-당신은 전문 주식·암호화폐 분석가입니다. 최신 뉴스와 시장 데이터를 검색하여 아래 JSON만 반환하세요. JSON 외 텍스트 절대 포함 금지. 한국어로 작성.
+  // ① 섹터 + 키워드 + 비트코인 (1차 호출)
+  const prompt1 = `오늘(${today}) 주식시장 기준으로 아래 JSON만 반환. JSON 외 텍스트 금지. 한국어.
 
 {
   "sectors": [
-    { "name":"섹터명", "icon":"이모지", "score":숫자(0-100), "temp":"매우뜨거움|뜨거움|보통|차가움", "label":"한줄설명(10자이내)" }
+    {"name":"섹터명","icon":"이모지","score":숫자(0-100),"temp":"매우뜨거움|뜨거움|보통|차가움","label":"설명8자이내"}
   ],
-  "keywords": [
-    { "text":"키워드", "score":숫자(0-100) }
-  ],
+  "keywords": [{"text":"키워드","score":숫자(0-100)}],
   "bitcoin": {
-    "trend": "비트코인 현재 트렌드 (3문장, 최근 가격흐름·이슈 포함)",
+    "trend": "트렌드 2문장",
     "timing": "buy|wait|sell",
-    "timingReason": "판단 근거 (2문장)",
-    "targetPrice": "단기 목표가 (달러 표시, 예: $95,000)"
-  },
-  "recommendations": [
-    { "ticker":"티커", "name":"종목명", "type":"domestic|overseas", "reason":"추천이유(2-3문장)", "target":"목표가또는수익률", "risk":"low|mid|high" }
-  ]
+    "timingReason": "근거 1문장",
+    "targetPrice": "$숫자"
+  }
 }
+sectors 8개, keywords 10개.`;
 
-- sectors: 현재 가장 주목받는 8개 섹터
-- keywords: 핫한 키워드 Top 10
-- bitcoin: 오늘 기준 분석 및 매수/관망/매도 판단
-- recommendations: 국내 3종목 + 해외 3종목`;
+  // ② 추천종목 (2차 호출)
+  const prompt2 = `오늘(${today}) 기준 주식 추천. JSON만 반환. 한국어.
 
-  const raw = await callGemini(prompt, 'dashboard');
-  const data = parseJSON(raw);
-  renderSectors(data.sectors || []);
-  renderKeywords(data.keywords || []);
-  if (data.bitcoin) renderBitcoin(data.bitcoin);
-  renderRecommendations(data.recommendations || []);
+[
+  {"ticker":"티커","name":"종목명","type":"domestic|overseas","reason":"이유 2문장","target":"목표가","risk":"low|mid|high"}
+]
+국내 3개 + 해외 3개. 총 6개.`;
+
+  // 두 호출 병렬 실행
+  const [r1, r2] = await Promise.allSettled([
+    callGemini(prompt1, 'dashboard1'),
+    callGemini(prompt2, 'dashboard2'),
+  ]);
+
+  if (r1.status === 'fulfilled') {
+    try {
+      const d = parseJSON(r1.value);
+      renderSectors(d.sectors || []);
+      renderKeywords(d.keywords || []);
+      if (d.bitcoin) renderBitcoin(d.bitcoin);
+    } catch(e) { console.error('섹터/키워드 파싱 오류:', e); }
+  } else {
+    console.error('섹터/키워드 호출 실패:', r1.reason);
+  }
+
+  if (r2.status === 'fulfilled') {
+    try {
+      const d = parseJSON(r2.value);
+      renderRecommendations(Array.isArray(d) ? d : []);
+    } catch(e) { console.error('추천종목 파싱 오류:', e); }
+  } else {
+    console.error('추천종목 호출 실패:', r2.reason);
+  }
+
+  // 둘 다 실패했을 때만 에러 throw
+  if (r1.status === 'rejected' && r2.status === 'rejected') {
+    throw new Error(r1.reason?.message || '대시보드 분석 실패');
+  }
 }
 
 function renderSectors(sectors) {
@@ -1205,22 +1232,21 @@ function renderIssues(issues) {
 // ═══ 주간리포트 ═══
 async function runReportAnalysis(today) {
   setLoading('reportContent', '리포트 생성 중...');
-  const prompt = `오늘 날짜: ${today}
-
-당신은 증권사 수석 애널리스트입니다. 최신 데이터를 검색하여 이번 주 시장 분석 리포트를 JSON으로만 반환하세요. 한국어로 작성.
+  const prompt = `오늘(${today}) 기준 주간 시장 분석. JSON만 반환. 한국어.
 
 {
   "weekRange": "YYYY.MM.DD ~ YYYY.MM.DD",
-  "kospiSummary": "KOSPI 주간 동향 (4-5문장, 수치 포함)",
-  "usSummary": "미국증시 주간 동향 (4-5문장, 수치 포함)",
-  "cryptoSummary": "비트코인·암호화폐 주간 동향 (2-3문장)",
-  "globalSummary": "글로벌 이슈 및 외환/원자재 동향 (3-4문장)",
-  "nextWeekOutlook": "다음 주 시장 전망 (3-4문장)",
+  "kospiSummary": "KOSPI 동향 3문장",
+  "usSummary": "미국증시 동향 3문장",
+  "cryptoSummary": "비트코인 동향 2문장",
+  "globalSummary": "글로벌 이슈 2문장",
+  "nextWeekOutlook": "다음주 전망 2문장",
   "riskFactors": ["리스크1","리스크2","리스크3"],
   "etfRecommendations": [
-    { "ticker":"ETF티커", "name":"ETF한글명", "market":"KR|US", "reason":"추천이유(2문장)", "strategy":"전략한줄" }
+    {"ticker":"티커","name":"ETF명","market":"KR|US","reason":"이유 1문장","strategy":"전략"}
   ]
-}`;
+}
+etfRecommendations: KR 3개 + US 3개.`;
   const raw = await callGemini(prompt, 'report');
   const data = parseJSON(raw);
   renderReport(data);
