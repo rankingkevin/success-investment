@@ -1086,12 +1086,13 @@ async function runDashboardAnalysis(today) {
   setLoading('recommendContent', '추천 종목 분석 중...');
   setLoading('etfContent', 'ETF 분석 중...');
 
-  // ① 섹터 + 키워드 + 비트코인
+  // ① 섹터 + 키워드 + 비트코인 + 섹터 종합코멘트
   const prompt1 = `오늘(${today}) 주식시장 기준. JSON만 반환. JSON 외 텍스트 절대 금지. 한국어.
 
 {
+  "sectorSummary": "현재 시장 섹터 흐름 종합 한줄 (예: AI·반도체 주도, 방산·바이오 동반 상승 흐름)",
   "sectors": [
-    {"name":"섹터명","icon":"이모지","score":숫자(0-100),"temp":"매우뜨거움|뜨거움|보통|차가움","comment":"현재 동향 한줄(15자이내)"}
+    {"name":"섹터명","icon":"이모지","score":숫자(0-100),"temp":"매우뜨거움|뜨거움|보통|차가움","comment":"동향 12자이내"}
   ],
   "keywords": [{"text":"키워드","score":숫자(0-100)}],
   "bitcoin": {
@@ -1106,51 +1107,77 @@ sectors 8개, keywords 10개.`;
   try {
     const raw1 = await callGemini(prompt1, 'dashboard1');
     const d1 = parseJSON(raw1);
-    renderSectors(d1.sectors || []);
+    renderSectors(d1.sectors || [], d1.sectorSummary || '');
     renderKeywords(d1.keywords || []);
     if (d1.bitcoin) renderBitcoin(d1.bitcoin);
   } catch(e) { console.error('섹터/키워드 오류:', e); }
 
-  // ② 추천 주식 (국내5 + 해외5)
-  const prompt2 = `오늘(${today}) 기준 주식 추천. JSON 배열만 반환. 한국어.
+  // ② 추천 국내주식 5개
+  const prompt2 = `오늘(${today}) 기준 한국 주식시장에서 매수 추천 종목. JSON 배열만 반환. 한국어.
+[{"ticker":"티커(예:005930.KS)","name":"종목명","type":"domestic","reason":"추천이유 2문장","target":"목표가또는수익률","risk":"low|mid|high"}]
+국내 주식 5개만.`;
 
-[{"ticker":"티커","name":"종목명","type":"domestic|overseas","reason":"추천이유 2문장","target":"목표가또는수익률","risk":"low|mid|high"}]
+  // ③ 추천 해외주식 5개
+  const prompt3 = `오늘(${today}) 기준 미국 주식시장에서 매수 추천 종목. JSON 배열만 반환. 한국어.
+[{"ticker":"미국티커(예:NVDA)","name":"종목명","type":"overseas","reason":"추천이유 2문장","target":"목표가또는수익률","risk":"low|mid|high"}]
+해외 주식 5개만.`;
 
-국내 5개(type=domestic) + 해외 5개(type=overseas). 총 10개.`;
+  // 국내/해외 병렬 호출
+  const [r2, r3] = await Promise.allSettled([
+    callGemini(prompt2, 'dashboard2'),
+    callGemini(prompt3, 'dashboard3'),
+  ]);
 
-  try {
-    const raw2 = await callGemini(prompt2, 'dashboard2');
-    const d2 = parseJSON(raw2);
-    renderRecommendations(Array.isArray(d2) ? d2 : []);
-  } catch(e) {
-    console.error('추천종목 오류:', e);
-    document.getElementById('recommendContent').innerHTML =
-      `<div class="state-box"><div class="state-icon">⚠️</div><div class="state-title">추천종목 분석 실패</div><div class="state-desc">${e.message}</div></div>`;
+  const allRecs = [];
+  if (r2.status === 'fulfilled') {
+    try { const d = parseJSON(r2.value); if (Array.isArray(d)) allRecs.push(...d); }
+    catch(e) { console.error('국내주식 파싱 오류:', e); }
+  }
+  if (r3.status === 'fulfilled') {
+    try { const d = parseJSON(r3.value); if (Array.isArray(d)) allRecs.push(...d); }
+    catch(e) { console.error('해외주식 파싱 오류:', e); }
   }
 
-  // ③ 추천 ETF (국내2 + 해외2)
-  const prompt3 = `오늘(${today}) 기준 ETF 추천. JSON 배열만 반환. 한국어.
+  if (allRecs.length) {
+    renderRecommendations(allRecs);
+  } else {
+    document.getElementById('recommendContent').innerHTML =
+      `<div class="state-box"><div class="state-icon">⚠️</div><div class="state-title">추천종목 분석 실패</div><div class="state-desc">다시 시도해주세요</div></div>`;
+  }
 
+  // ④ 추천 ETF (국내2 + 해외2) - 마지막 순차
+  const prompt4 = `오늘(${today}) 기준 ETF 추천. JSON 배열만 반환. 한국어.
 [{"ticker":"티커","name":"ETF한글명","market":"KR|US","reason":"추천이유 2문장","strategy":"투자전략 한줄"}]
-
 한국 ETF 2개(market=KR) + 미국 ETF 2개(market=US). 총 4개.`;
 
   try {
-    const raw3 = await callGemini(prompt3, 'dashboard3');
-    const d3 = parseJSON(raw3);
-    renderEtfRecommendations(Array.isArray(d3) ? d3 : []);
+    const raw4 = await callGemini(prompt4, 'dashboard4');
+    const d4 = parseJSON(raw4);
+    renderEtfRecommendations(Array.isArray(d4) ? d4 : []);
   } catch(e) {
     console.error('ETF 추천 오류:', e);
     document.getElementById('etfContent').innerHTML =
       `<div class="state-box"><div class="state-icon">⚠️</div><div class="state-title">ETF 분석 실패</div><div class="state-desc">${e.message}</div></div>`;
-    throw e;
   }
 }
 
-function renderSectors(sectors) {
+function renderSectors(sectors, summary) {
   const grid = document.getElementById('sectorGrid');
-  if (!sectors.length) { grid.innerHTML = '<div class="state-box" style="grid-column:1/-1"><div class="state-icon">😕</div><div class="state-title">데이터 없음</div></div>'; return; }
-  grid.innerHTML = sectors.map(s => {
+  if (!sectors.length) {
+    grid.innerHTML = '<div class="state-box" style="grid-column:1/-1"><div class="state-icon">😕</div><div class="state-title">데이터 없음</div></div>';
+    return;
+  }
+
+  // 종합 코멘트 배너
+  const summaryBanner = summary ? `
+    <div style="grid-column:1/-1; background:linear-gradient(135deg,rgba(26,127,212,0.08),rgba(232,62,140,0.06));
+      border:1px solid var(--border-b); border-radius:10px; padding:10px 16px;
+      display:flex; align-items:center; gap:10px; margin-bottom:4px;">
+      <span style="font-size:18px">📌</span>
+      <span style="font-size:13px; font-weight:600; color:var(--navy)">${summary}</span>
+    </div>` : '';
+
+  grid.innerHTML = summaryBanner + sectors.map(s => {
     const c = sc(s.temp);
     const tempLabel = {'매우뜨거움':'🔥 매우뜨거움','뜨거움':'🌡 뜨거움','보통':'➡ 보통','차가움':'❄ 차가움'}[s.temp] || s.temp;
     return `<div class="sector-item" style="background:${c.bg};border-color:${c.bd}">
