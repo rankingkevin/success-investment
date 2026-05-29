@@ -1,3 +1,5 @@
+export const maxDuration = 60; // Vercel 타임아웃 60초로 확장
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -11,16 +13,19 @@ export default async function handler(req, res) {
   const { prompt, type } = req.body;
   if (!prompt) return res.status(400).json({ error: 'prompt required' });
 
+  // 50초 AbortController (Vercel 60초 한도 내 안전 마진)
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 50000);
+
   try {
-    // gemini-2.0-flash 은 안정적이고 googleSearch 지원
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
     const body = {
       contents: [{ parts: [{ text: prompt }] }],
       tools: [{ googleSearch: {} }],
       generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 8192,
+        temperature: 0.5,
+        maxOutputTokens: 4096, // 8192→4096 줄여서 응답속도 개선
       }
     };
 
@@ -28,7 +33,10 @@ export default async function handler(req, res) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeout);
 
     if (!response.ok) {
       const err = await response.text();
@@ -49,6 +57,10 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ result: text, type });
   } catch (err) {
+    clearTimeout(timeout);
+    if (err.name === 'AbortError') {
+      return res.status(504).json({ error: '분석 시간이 초과되었습니다 (50초). 다시 시도해주세요.' });
+    }
     console.error('Handler error:', err);
     return res.status(500).json({ error: err.message });
   }
