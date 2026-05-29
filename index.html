@@ -589,7 +589,14 @@
         <span id="progressEmoji">⏳</span>
         <span id="progressMsg">분석 준비 중...</span>
       </div>
-      <div class="progress-pct" id="progressPct">0%</div>
+      <div style="display:flex;align-items:center;gap:16px">
+        <div class="progress-pct" id="progressPct">0%</div>
+        <button id="progressCloseBtn" onclick="progressHide()"
+          style="display:none;padding:4px 12px;border:1px solid var(--border-b);border-radius:8px;
+                 background:var(--card2);color:var(--text3);font-size:12px;cursor:pointer;font-weight:600">
+          닫기 ✕
+        </button>
+      </div>
     </div>
     <div class="progress-bar-wrap">
       <div class="progress-bar-fill" id="progressBar" style="width:0%"></div>
@@ -882,6 +889,7 @@ let currentPct = 0;
 
 function progressShow() {
   document.getElementById('progressPanel').classList.add('active');
+  document.getElementById('progressCloseBtn').style.display = 'none';
   currentPct = 0;
   setProgress(0, '⏳', '분석 준비 중...');
   // 모든 스텝 초기화
@@ -966,11 +974,18 @@ async function runAll() {
 
   // 완료 처리
   const allOk = [dashR, issueR, reportR].every(r => r.status === 'fulfilled');
-  setProgress(100, allOk ? '✅' : '⚠️', allOk ? '모든 분석 완료!' : '일부 분석 완료 (오류 있음)');
+  const anyError = [dashR, issueR, reportR].some(r => r.status === 'rejected');
+  setProgress(100, allOk ? '✅' : '⚠️', allOk ? '모든 분석이 완료되었습니다!' : '일부 항목에서 오류가 발생했습니다');
   setLastUpdate();
 
-  // 3초 후 패널 숨김
-  setTimeout(() => progressHide(), 3000);
+  // 성공 시 5초, 오류 있을 시 패널 유지 (수동으로 닫아야)
+  if (!anyError) {
+    setTimeout(() => progressHide(), 5000);
+  }
+  // 오류 있으면 패널에 닫기 버튼 노출
+  if (anyError) {
+    document.getElementById('progressCloseBtn').style.display = 'inline-block';
+  }
 
   btn.disabled = false;
   btn.classList.remove('loading');
