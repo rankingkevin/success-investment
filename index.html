@@ -906,15 +906,42 @@ async function fetchStocks(symbols) {
   return res.json();
 }
 
-// ── JSON 파싱 ──
+// ── JSON 파싱 (강화버전) ──
 function parseJSON(text) {
-  const clean = text.replace(/```json|```/g, '').trim();
-  const s = Math.min(
-    clean.includes('{') ? clean.indexOf('{') : Infinity,
-    clean.includes('[') ? clean.indexOf('[') : Infinity
-  );
-  const e = Math.max(clean.lastIndexOf('}'), clean.lastIndexOf(']'));
-  return JSON.parse(clean.slice(s, e + 1));
+  // 코드블록 제거
+  let clean = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+
+  // [ 또는 { 로 시작하는 위치 찾기
+  const arrStart = clean.indexOf('[');
+  const objStart = clean.indexOf('{');
+
+  let start = -1;
+  let isArray = false;
+
+  if (arrStart !== -1 && (objStart === -1 || arrStart < objStart)) {
+    start = arrStart; isArray = true;
+  } else if (objStart !== -1) {
+    start = objStart; isArray = false;
+  }
+
+  if (start === -1) throw new Error('JSON 시작 괄호를 찾을 수 없음');
+
+  const end = isArray ? clean.lastIndexOf(']') : clean.lastIndexOf('}');
+  if (end === -1 || end < start) throw new Error('JSON 종료 괄호를 찾을 수 없음');
+
+  const jsonStr = clean.slice(start, end + 1);
+  try {
+    return JSON.parse(jsonStr);
+  } catch(e) {
+    // 잘린 JSON 복구 시도: 배열이면 마지막 완전한 객체까지만 파싱
+    if (isArray) {
+      const lastComma = jsonStr.lastIndexOf('},');
+      if (lastComma > 0) {
+        try { return JSON.parse(jsonStr.slice(0, lastComma + 1) + ']'); } catch(_) {}
+      }
+    }
+    throw new Error('JSON 파싱 실패: ' + e.message);
+  }
 }
 
 function nowStr() { return new Date().toLocaleString('ko-KR', { timeZone:'Asia/Seoul' }); }
@@ -1092,45 +1119,66 @@ async function runRecommendAnalysis(today) {
   setLoading('recommendContent', '국내 추천종목 분석 중...');
   setLoading('etfContent', 'ETF 분석 중...');
 
-  // 국내주식
-  const p1 = `오늘(${today}) 한국 주식 매수 추천. JSON 배열만. 한국어.
-[{"ticker":"티커.KS","name":"종목명","type":"domestic","reason":"이유 2문장","target":"목표가","risk":"low|mid|high"}]
-5개.`;
+  // 국내주식 5개
+  const p1 = `오늘(${today}) 기준 한국 코스피·코스닥 매수 추천 종목 5개를 아래 JSON 배열 형식으로만 출력하라. 설명, 머리말, 코드블록 없이 순수 JSON만 출력.
+
+[
+  {"ticker":"005930.KS","name":"삼성전자","type":"domestic","reason":"추천 이유 두 문장.","target":"+15%","risk":"low"},
+  {"ticker":"000660.KS","name":"SK하이닉스","type":"domestic","reason":"추천 이유 두 문장.","target":"+20%","risk":"mid"}
+]
+
+위 형식으로 5개 출력.`;
 
   const allRecs = [];
   try {
     const r1 = await callGemini(p1, 'rec1');
+    console.log('국내주식 raw length:', r1.length, r1.slice(0,100));
     const d1 = parseJSON(r1);
     if (Array.isArray(d1)) allRecs.push(...d1);
-  } catch(e) { console.error('국내주식:', e.message); }
+  } catch(e) { console.error('국내주식 오류:', e.message); }
 
-  // 해외주식
+  // 해외주식 5개
   setLoading('recommendContent', '해외 추천종목 분석 중...');
-  const p2 = `오늘(${today}) 미국 주식 매수 추천. JSON 배열만. 한국어.
-[{"ticker":"미국티커","name":"종목명","type":"overseas","reason":"이유 2문장","target":"목표가","risk":"low|mid|high"}]
-5개.`;
+  const p2 = `오늘(${today}) 기준 미국 나스닥·NYSE 매수 추천 종목 5개를 아래 JSON 배열 형식으로만 출력하라. 설명, 머리말, 코드블록 없이 순수 JSON만 출력.
+
+[
+  {"ticker":"NVDA","name":"엔비디아","type":"overseas","reason":"추천 이유 두 문장.","target":"+25%","risk":"mid"},
+  {"ticker":"MSFT","name":"마이크로소프트","type":"overseas","reason":"추천 이유 두 문장.","target":"+15%","risk":"low"}
+]
+
+위 형식으로 5개 출력.`;
 
   try {
     const r2 = await callGemini(p2, 'rec2');
+    console.log('해외주식 raw length:', r2.length, r2.slice(0,100));
     const d2 = parseJSON(r2);
     if (Array.isArray(d2)) allRecs.push(...d2);
-  } catch(e) { console.error('해외주식:', e.message); }
+  } catch(e) { console.error('해외주식 오류:', e.message); }
 
-  if (allRecs.length) renderRecommendations(allRecs);
-  else document.getElementById('recommendContent').innerHTML =
-    `<div class="state-box"><div class="state-icon">⚠️</div><div class="state-title">추천종목 분석 실패</div><div class="state-desc">다시 시도해주세요</div></div>`;
+  if (allRecs.length) {
+    renderRecommendations(allRecs);
+  } else {
+    document.getElementById('recommendContent').innerHTML =
+      `<div class="state-box"><div class="state-icon">⚠️</div><div class="state-title">추천종목 분석 실패</div><div class="state-desc">다시 시도해주세요</div></div>`;
+  }
 
-  // ETF
-  const p3 = `오늘(${today}) ETF 추천. JSON 배열만. 한국어.
-[{"ticker":"티커","name":"ETF명","market":"KR|US","reason":"이유 2문장","strategy":"전략 한줄"}]
-KR 2개 + US 2개.`;
+  // ETF 4개
+  const p3 = `오늘(${today}) 기준 투자 추천 ETF 4개를 아래 JSON 배열 형식으로만 출력하라. 설명, 머리말, 코드블록 없이 순수 JSON만 출력.
+
+[
+  {"ticker":"KODEX200","name":"KODEX 200","market":"KR","reason":"추천 이유 두 문장.","strategy":"장기 적립식 투자"},
+  {"ticker":"QQQ","name":"인베스코 QQQ","market":"US","reason":"추천 이유 두 문장.","strategy":"나스닥 성장주 장기 보유"}
+]
+
+한국 ETF 2개(market=KR) + 미국 ETF 2개(market=US), 총 4개 출력.`;
 
   try {
     const r3 = await callGemini(p3, 'rec3');
+    console.log('ETF raw length:', r3.length, r3.slice(0,100));
     const d3 = parseJSON(r3);
     renderEtfRecommendations(Array.isArray(d3) ? d3 : []);
   } catch(e) {
-    console.error('ETF:', e.message);
+    console.error('ETF 오류:', e.message);
     document.getElementById('etfContent').innerHTML =
       `<div class="state-box"><div class="state-icon">⚠️</div><div class="state-title">ETF 분석 실패</div></div>`;
   }
