@@ -950,10 +950,10 @@ async function fetchUsdKrw() {
 
 // ═══ 진행률 관리 ═══
 const STEPS = {
-  stock:      { weight: 8,  el: 'step-stock' },
-  dashboard:  { weight: 37, el: 'step-dashboard' },
-  issues:     { weight: 28, el: 'step-issues' },
-  report:     { weight: 27, el: 'step-report' },
+  stock:     { weight: 5,  el: 'step-stock' },
+  dashboard: { weight: 30, el: 'step-dashboard' },
+  issues:    { weight: 25, el: 'step-issues' },
+  report:    { weight: 20, el: 'step-report' },
 };
 let currentPct = 0;
 
@@ -1017,7 +1017,7 @@ function stepLabel(key) {
   return map[key] || key;
 }
 
-// ═══ 전체 분석 (진행률 포함 병렬 실행) ═══
+// ═══ 전체 분석 ═══
 async function runAll() {
   const btn = document.getElementById('btnAll');
   btn.disabled = true;
@@ -1028,45 +1028,112 @@ async function runAll() {
   progressShow();
   const today = new Date().toLocaleDateString('ko-KR');
 
-  // ① 주가 + 환율 (10%)
+  // ① 주가 + 환율
   stepStart('stock');
   try {
     await Promise.all([loadMarketGauges(), fetchUsdKrw()]);
     stepDone('stock', true);
-  } catch(e) {
-    stepDone('stock', false);
-  }
+  } catch(e) { stepDone('stock', false); }
 
-  // ② 대시보드 + 마켓이슈 + 리포트 병렬
+  // ② 섹터/키워드/BTC + 마켓이슈 + 리포트 → 병렬 (각각 1번 호출)
   stepStart('dashboard');
   stepStart('issues');
   stepStart('report');
 
-  const [dashR, issueR, reportR] = await Promise.allSettled([
-    runDashboardAnalysis(today).then(() => stepDone('dashboard', true)).catch(e => { console.error(e); stepDone('dashboard', false); }),
+  const [sectorR, issueR, reportR] = await Promise.allSettled([
+    runSectorAnalysis(today).then(() => stepDone('dashboard', true)).catch(e => { console.error(e); stepDone('dashboard', false); }),
     runIssuesAnalysis(today).then(() => stepDone('issues', true)).catch(e => { console.error(e); stepDone('issues', false); }),
     runReportAnalysis(today).then(() => stepDone('report', true)).catch(e => { console.error(e); stepDone('report', false); }),
   ]);
 
-  // 완료 처리
-  const allOk = [dashR, issueR, reportR].every(r => r.status === 'fulfilled');
-  const anyError = [dashR, issueR, reportR].some(r => r.status === 'rejected');
-  setProgress(100, allOk ? '✅' : '⚠️', allOk ? '모든 분석이 완료되었습니다!' : '일부 항목에서 오류가 발생했습니다');
+  // ③ 추천주식 + ETF → 섹터 완료 후 별도 순차 (진행바는 이미 100% 근처)
+  // 백그라운드로 실행 (진행바 완료와 무관하게)
+  runRecommendAnalysis(today).catch(e => console.error('추천 분석 오류:', e));
+
+  const anyError = [sectorR, issueR, reportR].some(r => r.status === 'rejected');
+  setProgress(100, anyError ? '⚠️' : '✅', anyError ? '일부 항목 오류 발생' : '분석 완료! 추천종목 분석 진행 중...');
   setLastUpdate();
 
-  // 성공 시 5초, 오류 있을 시 패널 유지 (수동으로 닫아야)
-  if (!anyError) {
-    setTimeout(() => progressHide(), 5000);
-  }
-  // 오류 있으면 패널에 닫기 버튼 노출
-  if (anyError) {
-    document.getElementById('progressCloseBtn').style.display = 'inline-block';
-  }
+  if (!anyError) setTimeout(() => progressHide(), 5000);
+  else document.getElementById('progressCloseBtn').style.display = 'inline-block';
 
   btn.disabled = false;
   btn.classList.remove('loading');
   btn.querySelector('.spin').style.display = 'none';
   btn.querySelector('.btn-icon').style.display = '';
+}
+
+// 섹터 + 키워드 + BTC (1번 호출)
+async function runSectorAnalysis(today) {
+  setLoading('sectorGrid', '섹터 분석 중...');
+  setLoading('keywordList', '키워드 분석 중...');
+
+  const prompt = `오늘(${today}) 주식시장 기준. JSON만 반환. 한국어.
+{
+  "sectorSummary": "이번주 시장 전체 흐름 요약 및 투자 액션 가이드 2문장",
+  "sectors": [
+    {"name":"섹터명","icon":"이모지","score":숫자(0-100),"temp":"매우뜨거움|뜨거움|보통|차가움",
+     "status":"현황 12자이내","guide":"투자 가이드 1-2문장","picks":["주목종목1","주목종목2"]}
+  ],
+  "keywords": [{"text":"키워드","score":숫자(0-100)}],
+  "bitcoin": {"trend":"트렌드 2문장","timing":"buy|wait|sell","timingReason":"근거 1문장","targetPrice":"$숫자"}
+}
+sectors 8개, keywords 10개.`;
+
+  const raw = await callGemini(prompt, 'sector');
+  const d = parseJSON(raw);
+  renderSectors(d.sectors || [], d.sectorSummary || '');
+  renderKeywords(d.keywords || []);
+  if (d.bitcoin) renderBitcoin(d.bitcoin);
+}
+
+// 추천주식 + ETF (별도 순차, 백그라운드)
+async function runRecommendAnalysis(today) {
+  setLoading('recommendContent', '국내 추천종목 분석 중...');
+  setLoading('etfContent', 'ETF 분석 중...');
+
+  // 국내주식
+  const p1 = `오늘(${today}) 한국 주식 매수 추천. JSON 배열만. 한국어.
+[{"ticker":"티커.KS","name":"종목명","type":"domestic","reason":"이유 2문장","target":"목표가","risk":"low|mid|high"}]
+5개.`;
+
+  const allRecs = [];
+  try {
+    const r1 = await callGemini(p1, 'rec1');
+    const d1 = parseJSON(r1);
+    if (Array.isArray(d1)) allRecs.push(...d1);
+  } catch(e) { console.error('국내주식:', e.message); }
+
+  // 해외주식
+  setLoading('recommendContent', '해외 추천종목 분석 중...');
+  const p2 = `오늘(${today}) 미국 주식 매수 추천. JSON 배열만. 한국어.
+[{"ticker":"미국티커","name":"종목명","type":"overseas","reason":"이유 2문장","target":"목표가","risk":"low|mid|high"}]
+5개.`;
+
+  try {
+    const r2 = await callGemini(p2, 'rec2');
+    const d2 = parseJSON(r2);
+    if (Array.isArray(d2)) allRecs.push(...d2);
+  } catch(e) { console.error('해외주식:', e.message); }
+
+  if (allRecs.length) renderRecommendations(allRecs);
+  else document.getElementById('recommendContent').innerHTML =
+    `<div class="state-box"><div class="state-icon">⚠️</div><div class="state-title">추천종목 분석 실패</div><div class="state-desc">다시 시도해주세요</div></div>`;
+
+  // ETF
+  const p3 = `오늘(${today}) ETF 추천. JSON 배열만. 한국어.
+[{"ticker":"티커","name":"ETF명","market":"KR|US","reason":"이유 2문장","strategy":"전략 한줄"}]
+KR 2개 + US 2개.`;
+
+  try {
+    const r3 = await callGemini(p3, 'rec3');
+    const d3 = parseJSON(r3);
+    renderEtfRecommendations(Array.isArray(d3) ? d3 : []);
+  } catch(e) {
+    console.error('ETF:', e.message);
+    document.getElementById('etfContent').innerHTML =
+      `<div class="state-box"><div class="state-icon">⚠️</div><div class="state-title">ETF 분석 실패</div></div>`;
+  }
 }
 
 // ── 로딩 상태 표시 ──
@@ -1113,95 +1180,6 @@ async function loadMarketGauges() {
       cel.className = 'btc-change ' + (pct>0?'up':pct<0?'down':'flat');
     }
   } catch(e) { console.warn('주가 로드 실패:', e.message); }
-}
-
-async function runDashboardAnalysis(today) {
-  setLoading('sectorGrid', '섹터 분석 중...');
-  setLoading('keywordList', '키워드 분석 중...');
-  setLoading('recommendContent', '추천 종목 분석 중...');
-  setLoading('etfContent', 'ETF 분석 중...');
-
-  // ① 섹터 + 키워드 + 비트코인 + 섹터 종합코멘트
-  const prompt1 = `오늘(${today}) 주식시장 기준. JSON만 반환. JSON 외 텍스트 절대 금지. 한국어.
-
-{
-  "sectorSummary": "이번주 시장 전체 흐름 요약 및 투자 액션 가이드 2문장 (예: AI·반도체 강세 지속으로 관련주 비중 유지 권장. 방산은 신규 진입 검토, 이차전지는 저점 대기.)",
-  "sectors": [
-    {
-      "name": "섹터명",
-      "icon": "이모지",
-      "score": 숫자(0-100),
-      "temp": "매우뜨거움|뜨거움|보통|차가움",
-      "status": "현황 한줄(15자이내, 예: AI칩 수요 폭발)",
-      "guide": "투자 가이드 1-2문장 (예: 단기 과열 주의, 분할매수 권장. 엔비디아 눌림목 시 매수 적기.)",
-      "picks": ["주목종목1", "주목종목2"]
-    }
-  ],
-  "keywords": [{"text":"키워드","score":숫자(0-100)}],
-  "bitcoin": {
-    "trend": "트렌드 2문장",
-    "timing": "buy|wait|sell",
-    "timingReason": "근거 1문장",
-    "targetPrice": "$숫자"
-  }
-}
-sectors 8개, keywords 10개.`;
-
-  try {
-    const raw1 = await callGemini(prompt1, 'dashboard1');
-    const d1 = parseJSON(raw1);
-    renderSectors(d1.sectors || [], d1.sectorSummary || '');
-    renderKeywords(d1.keywords || []);
-    if (d1.bitcoin) renderBitcoin(d1.bitcoin);
-  } catch(e) { console.error('섹터/키워드 오류:', e); }
-
-  // ② 추천 국내주식 5개
-  const prompt2 = `오늘(${today}) 기준 한국 주식시장에서 매수 추천 종목. JSON 배열만 반환. 한국어.
-[{"ticker":"티커(예:005930.KS)","name":"종목명","type":"domestic","reason":"추천이유 2문장","target":"목표가또는수익률","risk":"low|mid|high"}]
-국내 주식 5개만.`;
-
-  // ③ 추천 해외주식 5개
-  const prompt3 = `오늘(${today}) 기준 미국 주식시장에서 매수 추천 종목. JSON 배열만 반환. 한국어.
-[{"ticker":"미국티커(예:NVDA)","name":"종목명","type":"overseas","reason":"추천이유 2문장","target":"목표가또는수익률","risk":"low|mid|high"}]
-해외 주식 5개만.`;
-
-  // 국내/해외 병렬 호출
-  const [r2, r3] = await Promise.allSettled([
-    callGemini(prompt2, 'dashboard2'),
-    callGemini(prompt3, 'dashboard3'),
-  ]);
-
-  const allRecs = [];
-  if (r2.status === 'fulfilled') {
-    try { const d = parseJSON(r2.value); if (Array.isArray(d)) allRecs.push(...d); }
-    catch(e) { console.error('국내주식 파싱 오류:', e); }
-  }
-  if (r3.status === 'fulfilled') {
-    try { const d = parseJSON(r3.value); if (Array.isArray(d)) allRecs.push(...d); }
-    catch(e) { console.error('해외주식 파싱 오류:', e); }
-  }
-
-  if (allRecs.length) {
-    renderRecommendations(allRecs);
-  } else {
-    document.getElementById('recommendContent').innerHTML =
-      `<div class="state-box"><div class="state-icon">⚠️</div><div class="state-title">추천종목 분석 실패</div><div class="state-desc">다시 시도해주세요</div></div>`;
-  }
-
-  // ④ 추천 ETF (국내2 + 해외2) - 마지막 순차
-  const prompt4 = `오늘(${today}) 기준 ETF 추천. JSON 배열만 반환. 한국어.
-[{"ticker":"티커","name":"ETF한글명","market":"KR|US","reason":"추천이유 2문장","strategy":"투자전략 한줄"}]
-한국 ETF 2개(market=KR) + 미국 ETF 2개(market=US). 총 4개.`;
-
-  try {
-    const raw4 = await callGemini(prompt4, 'dashboard4');
-    const d4 = parseJSON(raw4);
-    renderEtfRecommendations(Array.isArray(d4) ? d4 : []);
-  } catch(e) {
-    console.error('ETF 추천 오류:', e);
-    document.getElementById('etfContent').innerHTML =
-      `<div class="state-box"><div class="state-icon">⚠️</div><div class="state-title">ETF 분석 실패</div><div class="state-desc">${e.message}</div></div>`;
-  }
 }
 
 function renderSectors(sectors, summary) {
