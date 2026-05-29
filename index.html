@@ -163,6 +163,7 @@
   .btn-analyze-all.loading .spin { display:block; }
   .btn-analyze-all.loading .btn-icon { display:none; }
   @keyframes spin { to { transform:rotate(360deg); } }
+  @keyframes fadeIn { from{opacity:0;transform:translateX(-50%) translateY(10px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
 
   /* ── 진행률 패널 ── */
   .progress-panel {
@@ -347,9 +348,26 @@
   .keyword-bar { height:100%; border-radius:2px; background:var(--grad-pink); }
   .keyword-score { font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text3); width:26px; text-align:right; }
 
-  /* 추천종목 */
+  /* 추천종목 탭 UI */
   .recommend-card { grid-column:1/-1; }
-  .recommend-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  .rec-tabs {
+    display:flex; gap:6px; margin-bottom:18px;
+    border-bottom:2px solid var(--border); padding-bottom:0;
+  }
+  .rec-tab {
+    padding:8px 20px; font-size:13px; font-weight:700;
+    color:var(--text3); cursor:pointer; border:none; background:none;
+    border-bottom:2px solid transparent; margin-bottom:-2px;
+    font-family:'Noto Sans KR',sans-serif; transition:all .2s;
+  }
+  .rec-tab:hover { color:var(--navy); }
+  .rec-tab.active { color:var(--blue); border-bottom-color:var(--blue); }
+  .rec-tab-panel { display:none; }
+  .rec-tab-panel.active { display:block; }
+
+  .recommend-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; }
+  .recommend-grid-etf { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+
   .rec-section-label { font-size:12px; color:var(--text3); letter-spacing:1px; margin-bottom:10px; font-weight:700; text-transform:uppercase; }
   .rec-item {
     background:var(--card2); border:1px solid var(--border);
@@ -362,14 +380,17 @@
   .rec-badge { font-size:11px; padding:3px 9px; border-radius:20px; font-weight:700; }
   .rec-badge.domestic { background:rgba(26,127,212,0.12); color:var(--blue); border:1px solid rgba(26,127,212,0.3); }
   .rec-badge.overseas { background:rgba(232,62,140,0.10); color:var(--pink); border:1px solid rgba(232,62,140,0.25); }
+  .rec-badge.etf-kr { background:rgba(5,150,105,0.1); color:var(--green); border:1px solid rgba(5,150,105,0.25); }
+  .rec-badge.etf-us { background:rgba(124,58,237,0.1); color:var(--purple); border:1px solid rgba(124,58,237,0.25); }
   .rec-reason { font-size:13px; color:var(--text2); line-height:1.7; margin-bottom:11px; }
-  .rec-footer { display:flex; justify-content:space-between; align-items:center; }
+  .rec-footer { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; }
   .rec-target { font-size:12px; color:var(--text3); }
   .rec-target strong { color:var(--green); font-family:'JetBrains Mono',monospace; font-size:13px; }
   .rec-risk { font-size:11px; padding:3px 9px; border-radius:10px; font-weight:700; }
   .rec-risk.low  { background:rgba(5,150,105,0.1); color:var(--green); }
   .rec-risk.mid  { background:rgba(217,119,6,0.1); color:var(--yellow); }
   .rec-risk.high { background:rgba(220,38,38,0.1); color:var(--red); }
+  .rec-strategy { font-size:11px; color:var(--text3); font-style:italic; margin-top:6px; }
 
   /* ── 마켓이슈 ── */
   .issue-list { display:flex; flex-direction:column; gap:16px; }
@@ -523,7 +544,7 @@
     .market-gauge-row { grid-template-columns:1fr; }
     .report-body { grid-template-columns:1fr; }
     .wr-body { grid-template-columns:1fr; }
-    .recommend-grid { grid-template-columns:1fr; }
+    .recommend-grid { grid-template-columns:repeat(3,1fr); }
     .btc-inner { grid-template-columns:1fr; gap:14px; }
   }
   @media(max-width:640px){
@@ -728,12 +749,27 @@
 
       <!-- 오늘의 추천 -->
       <div class="card recommend-card">
-        <div class="card-title">💡 오늘의 추천 종목</div>
-        <div id="recommendContent">
-          <div class="state-box">
-            <div class="state-icon">💼</div>
-            <div class="state-title">전체 분석 시작 버튼을 눌러주세요</div>
-            <div class="state-desc">국내 3종목 + 해외 3종목을 분석합니다</div>
+        <div class="card-title">💡 오늘의 추천</div>
+        <div class="rec-tabs">
+          <button class="rec-tab active" onclick="switchRecTab('stock', this)">📈 추천 주식 (국내5 + 해외5)</button>
+          <button class="rec-tab" onclick="switchRecTab('etf', this)">💼 추천 ETF (국내2 + 해외2)</button>
+        </div>
+        <div class="rec-tab-panel active" id="recPanel-stock">
+          <div id="recommendContent">
+            <div class="state-box">
+              <div class="state-icon">📈</div>
+              <div class="state-title">전체 분석 시작 버튼을 눌러주세요</div>
+              <div class="state-desc">국내 5종목 + 해외 5종목을 분석합니다</div>
+            </div>
+          </div>
+        </div>
+        <div class="rec-tab-panel" id="recPanel-etf">
+          <div id="etfContent">
+            <div class="state-box">
+              <div class="state-icon">💼</div>
+              <div class="state-title">전체 분석 시작 버튼을 눌러주세요</div>
+              <div class="state-desc">국내 ETF 2개 + 해외 ETF 2개를 추천합니다</div>
+            </div>
           </div>
         </div>
       </div>
@@ -769,7 +805,7 @@
       <div class="state-box">
         <div class="state-icon">📋</div>
         <div class="state-title">전체 분석 시작 버튼을 눌러주세요</div>
-        <div class="state-desc">KOSPI + 미국증시 주간 흐름 분석 및 ETF 추천을 생성합니다</div>
+        <div class="state-desc">KOSPI + 미국증시 + 암호화폐 주간 흐름 분석을 생성합니다</div>
       </div>
     </div>
   </div>
@@ -1048,13 +1084,14 @@ async function runDashboardAnalysis(today) {
   setLoading('sectorGrid', '섹터 분석 중...');
   setLoading('keywordList', '키워드 분석 중...');
   setLoading('recommendContent', '추천 종목 분석 중...');
+  setLoading('etfContent', 'ETF 분석 중...');
 
-  // ① 섹터 + 키워드 + 비트코인 (1차 호출)
-  const prompt1 = `오늘(${today}) 주식시장 기준으로 아래 JSON만 반환. JSON 외 텍스트 금지. 한국어.
+  // ① 섹터 + 키워드 + 비트코인
+  const prompt1 = `오늘(${today}) 주식시장 기준. JSON만 반환. JSON 외 텍스트 절대 금지. 한국어.
 
 {
   "sectors": [
-    {"name":"섹터명","icon":"이모지","score":숫자(0-100),"temp":"매우뜨거움|뜨거움|보통|차가움","label":"설명8자이내"}
+    {"name":"섹터명","icon":"이모지","score":숫자(0-100),"temp":"매우뜨거움|뜨거움|보통|차가움","comment":"현재 동향 한줄(15자이내)"}
   ],
   "keywords": [{"text":"키워드","score":숫자(0-100)}],
   "bitcoin": {
@@ -1066,43 +1103,47 @@ async function runDashboardAnalysis(today) {
 }
 sectors 8개, keywords 10개.`;
 
-  // ② 추천종목 (2차 호출)
-  const prompt2 = `오늘(${today}) 기준 주식 추천. JSON만 반환. 한국어.
+  try {
+    const raw1 = await callGemini(prompt1, 'dashboard1');
+    const d1 = parseJSON(raw1);
+    renderSectors(d1.sectors || []);
+    renderKeywords(d1.keywords || []);
+    if (d1.bitcoin) renderBitcoin(d1.bitcoin);
+  } catch(e) { console.error('섹터/키워드 오류:', e); }
 
-[
-  {"ticker":"티커","name":"종목명","type":"domestic|overseas","reason":"이유 2문장","target":"목표가","risk":"low|mid|high"}
-]
-국내 3개 + 해외 3개. 총 6개.`;
+  // ② 추천 주식 (국내5 + 해외5)
+  const prompt2 = `오늘(${today}) 기준 주식 추천. JSON 배열만 반환. 한국어.
 
-  // 두 호출 병렬 실행
-  const [r1, r2] = await Promise.allSettled([
-    callGemini(prompt1, 'dashboard1'),
-    callGemini(prompt2, 'dashboard2'),
-  ]);
+[{"ticker":"티커","name":"종목명","type":"domestic|overseas","reason":"추천이유 2문장","target":"목표가또는수익률","risk":"low|mid|high"}]
 
-  if (r1.status === 'fulfilled') {
-    try {
-      const d = parseJSON(r1.value);
-      renderSectors(d.sectors || []);
-      renderKeywords(d.keywords || []);
-      if (d.bitcoin) renderBitcoin(d.bitcoin);
-    } catch(e) { console.error('섹터/키워드 파싱 오류:', e); }
-  } else {
-    console.error('섹터/키워드 호출 실패:', r1.reason);
+국내 5개(type=domestic) + 해외 5개(type=overseas). 총 10개.`;
+
+  try {
+    const raw2 = await callGemini(prompt2, 'dashboard2');
+    const d2 = parseJSON(raw2);
+    renderRecommendations(Array.isArray(d2) ? d2 : []);
+  } catch(e) {
+    console.error('추천종목 오류:', e);
+    document.getElementById('recommendContent').innerHTML =
+      `<div class="state-box"><div class="state-icon">⚠️</div><div class="state-title">추천종목 분석 실패</div><div class="state-desc">${e.message}</div></div>`;
   }
 
-  if (r2.status === 'fulfilled') {
-    try {
-      const d = parseJSON(r2.value);
-      renderRecommendations(Array.isArray(d) ? d : []);
-    } catch(e) { console.error('추천종목 파싱 오류:', e); }
-  } else {
-    console.error('추천종목 호출 실패:', r2.reason);
-  }
+  // ③ 추천 ETF (국내2 + 해외2)
+  const prompt3 = `오늘(${today}) 기준 ETF 추천. JSON 배열만 반환. 한국어.
 
-  // 둘 다 실패했을 때만 에러 throw
-  if (r1.status === 'rejected' && r2.status === 'rejected') {
-    throw new Error(r1.reason?.message || '대시보드 분석 실패');
+[{"ticker":"티커","name":"ETF한글명","market":"KR|US","reason":"추천이유 2문장","strategy":"투자전략 한줄"}]
+
+한국 ETF 2개(market=KR) + 미국 ETF 2개(market=US). 총 4개.`;
+
+  try {
+    const raw3 = await callGemini(prompt3, 'dashboard3');
+    const d3 = parseJSON(raw3);
+    renderEtfRecommendations(Array.isArray(d3) ? d3 : []);
+  } catch(e) {
+    console.error('ETF 추천 오류:', e);
+    document.getElementById('etfContent').innerHTML =
+      `<div class="state-box"><div class="state-icon">⚠️</div><div class="state-title">ETF 분석 실패</div><div class="state-desc">${e.message}</div></div>`;
+    throw e;
   }
 }
 
@@ -1111,11 +1152,12 @@ function renderSectors(sectors) {
   if (!sectors.length) { grid.innerHTML = '<div class="state-box" style="grid-column:1/-1"><div class="state-icon">😕</div><div class="state-title">데이터 없음</div></div>'; return; }
   grid.innerHTML = sectors.map(s => {
     const c = sc(s.temp);
+    const tempLabel = {'매우뜨거움':'🔥 매우뜨거움','뜨거움':'🌡 뜨거움','보통':'➡ 보통','차가움':'❄ 차가움'}[s.temp] || s.temp;
     return `<div class="sector-item" style="background:${c.bg};border-color:${c.bd}">
       <div class="s-icon">${s.icon||'📈'}</div>
       <div class="s-name" style="color:${c.sc}">${s.name}</div>
-      <div class="s-score" style="color:${c.sc}">${s.score}</div>
-      <div class="s-label" style="color:${c.sc}">${s.label||s.temp}</div>
+      <div class="s-score" style="color:${c.sc}">${s.score}<span style="font-size:10px;font-family:sans-serif;font-weight:400"> pt</span></div>
+      <div class="s-label" style="color:${c.sc};font-size:10px;margin-top:3px">${s.comment || s.label || tempLabel}</div>
     </div>`;
   }).join('');
 }
@@ -1152,25 +1194,122 @@ function renderRecommendations(recs) {
   if (!recs.length) { el.innerHTML = '<div class="state-box"><div class="state-icon">😕</div><div class="state-title">추천 데이터 없음</div></div>'; return; }
   const domestic = recs.filter(r=>r.type==='domestic');
   const overseas = recs.filter(r=>r.type==='overseas');
+
   const group = (list, label) => !list.length ? '' : `
     <div>
       <div class="rec-section-label">${label}</div>
       <div class="recommend-grid">
-        ${list.map(r=>`
-        <div class="rec-item">
-          <div class="rec-header">
-            <div><div class="rec-ticker">${r.ticker}</div><div class="rec-name">${r.name}</div></div>
-            <div class="rec-badge ${r.type}">${r.type==='domestic'?'국내':'해외'}</div>
-          </div>
-          <div class="rec-reason">${r.reason}</div>
-          <div class="rec-footer">
-            <div class="rec-target">목표: <strong>${r.target}</strong></div>
-            <div class="rec-risk ${r.risk}">${r.risk==='low'?'저위험':r.risk==='mid'?'중위험':'고위험'}</div>
-          </div>
-        </div>`).join('')}
+        ${list.map(r => {
+          const inWatch = watchlist.includes(r.ticker);
+          return `
+          <div class="rec-item">
+            <div class="rec-header">
+              <div><div class="rec-ticker">${r.ticker}</div><div class="rec-name">${r.name}</div></div>
+              <div class="rec-badge ${r.type}">${r.type==='domestic'?'국내':'해외'}</div>
+            </div>
+            <div class="rec-reason">${r.reason}</div>
+            <div class="rec-footer">
+              <div class="rec-target">목표: <strong>${r.target}</strong></div>
+              <div style="display:flex;align-items:center;gap:6px">
+                <div class="rec-risk ${r.risk}">${r.risk==='low'?'저위험':r.risk==='mid'?'중위험':'고위험'}</div>
+                <button onclick="addWatchFromRec('${r.ticker}')" id="recBtn_${r.ticker}"
+                  style="padding:3px 10px;font-size:11px;font-weight:700;border-radius:8px;cursor:pointer;
+                         border:1.5px solid ${inWatch?'var(--green)':'var(--blue2)'};
+                         background:${inWatch?'rgba(5,150,105,0.1)':'rgba(37,150,232,0.1)'};
+                         color:${inWatch?'var(--green)':'var(--blue2)'};
+                         font-family:inherit;transition:all .2s">
+                  ${inWatch ? '✓ 추가됨' : '+ 관심종목'}
+                </button>
+              </div>
+            </div>
+          </div>`;
+        }).join('')}
       </div>
     </div>`;
+
   el.innerHTML = `<div style="display:flex;flex-direction:column;gap:18px">${group(domestic,'🇰🇷 국내 추천')}${group(overseas,'🌐 해외 추천')}</div>`;
+}
+
+// 추천 탭 전환
+function switchRecTab(name, el) {
+  document.querySelectorAll('.rec-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.rec-tab-panel').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('recPanel-' + name).classList.add('active');
+}
+
+// ETF 추천 렌더링
+function renderEtfRecommendations(etfs) {
+  const el = document.getElementById('etfContent');
+  if (!etfs.length) {
+    el.innerHTML = '<div class="state-box"><div class="state-icon">😕</div><div class="state-title">ETF 데이터 없음</div></div>';
+    return;
+  }
+  const krEtfs = etfs.filter(e => e.market === 'KR');
+  const usEtfs = etfs.filter(e => e.market === 'US');
+
+  const group = (list, label) => !list.length ? '' : `
+    <div style="margin-bottom:20px">
+      <div class="rec-section-label">${label}</div>
+      <div class="recommend-grid-etf">
+        ${list.map(e => {
+          const inWatch = watchlist.includes(e.ticker);
+          return `
+          <div class="rec-item">
+            <div class="rec-header">
+              <div>
+                <div class="rec-ticker">${e.ticker}</div>
+                <div class="rec-name">${e.name}</div>
+              </div>
+              <div class="rec-badge ${e.market==='KR'?'etf-kr':'etf-us'}">${e.market==='KR'?'국내ETF':'해외ETF'}</div>
+            </div>
+            <div class="rec-reason">${e.reason}</div>
+            <div class="rec-footer">
+              <div class="rec-strategy">💡 ${e.strategy}</div>
+              <button onclick="addWatchFromRec('${e.ticker}')" id="recBtn_${e.ticker}"
+                style="padding:3px 10px;font-size:11px;font-weight:700;border-radius:8px;cursor:pointer;
+                       border:1.5px solid ${inWatch?'var(--green)':'var(--blue2)'};
+                       background:${inWatch?'rgba(5,150,105,0.1)':'rgba(37,150,232,0.1)'};
+                       color:${inWatch?'var(--green)':'var(--blue2)'};
+                       font-family:inherit;transition:all .2s">
+                ${inWatch ? '✓ 추가됨' : '+ 관심종목'}
+              </button>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+
+  el.innerHTML = group(krEtfs, '🇰🇷 국내 ETF 추천') + group(usEtfs, '🌐 해외 ETF 추천');
+}
+function addWatchFromRec(ticker) {
+  const btn = document.getElementById('recBtn_' + ticker);
+  if (watchlist.includes(ticker)) {
+    alert(`${ticker}은(는) 이미 관심종목에 있습니다.`);
+    return;
+  }
+  if (watchlist.length >= 10) {
+    alert('관심종목은 최대 10개까지 추가 가능합니다.');
+    return;
+  }
+  watchlist.push(ticker);
+  saveWatchlist();
+  renderChips();
+  if (btn) {
+    btn.textContent = '✓ 추가됨';
+    btn.style.borderColor = 'var(--green)';
+    btn.style.background = 'rgba(5,150,105,0.1)';
+    btn.style.color = 'var(--green)';
+  }
+  // 관심종목 탭으로 잠깐 피드백
+  const toast = document.createElement('div');
+  toast.textContent = `⭐ ${ticker} 관심종목 추가됨`;
+  toast.style.cssText = `position:fixed;bottom:28px;left:50%;transform:translateX(-50%);
+    background:var(--navy);color:#fff;padding:10px 22px;border-radius:20px;
+    font-size:13px;font-weight:600;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,0.2);
+    animation:fadeIn .3s ease`;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 2500);
 }
 
 // ═══ 마켓이슈 ═══
@@ -1241,12 +1380,8 @@ async function runReportAnalysis(today) {
   "cryptoSummary": "비트코인 동향 2문장",
   "globalSummary": "글로벌 이슈 2문장",
   "nextWeekOutlook": "다음주 전망 2문장",
-  "riskFactors": ["리스크1","리스크2","리스크3"],
-  "etfRecommendations": [
-    {"ticker":"티커","name":"ETF명","market":"KR|US","reason":"이유 1문장","strategy":"전략"}
-  ]
-}
-etfRecommendations: KR 3개 + US 3개.`;
+  "riskFactors": ["리스크1","리스크2","리스크3"]
+}`;
   const raw = await callGemini(prompt, 'report');
   const data = parseJSON(raw);
   renderReport(data);
@@ -1254,22 +1389,6 @@ etfRecommendations: KR 3개 + US 3개.`;
 
 function renderReport(d) {
   const el = document.getElementById('reportContent');
-  const krEtfs = (d.etfRecommendations||[]).filter(e=>e.market==='KR');
-  const usEtfs  = (d.etfRecommendations||[]).filter(e=>e.market==='US');
-  const etfBlock = (list, label) => !list.length ? '' : `
-    <div style="margin-bottom:14px">
-      <div style="font-size:12px;color:var(--text3);font-weight:700;letter-spacing:1px;margin-bottom:9px">${label}</div>
-      <div class="etf-list">${list.map(e=>`
-        <div class="etf-item">
-          <div class="etf-ticker">${e.ticker}</div>
-          <div class="etf-name">
-            <div style="font-weight:700;color:var(--navy);margin-bottom:3px">${e.name}</div>
-            <div>${e.reason}</div>
-          </div>
-          <div class="etf-reason">${e.strategy}</div>
-        </div>`).join('')}
-      </div>
-    </div>`;
   const risks = (d.riskFactors||[]).map(r=>`
     <div style="display:flex;align-items:flex-start;gap:9px;margin-bottom:10px">
       <span style="color:var(--red);flex-shrink:0;font-size:16px">⚠</span>
@@ -1297,13 +1416,6 @@ function renderReport(d) {
         ${sec('🔭 다음 주 전망', d.nextWeekOutlook)}
         <div class="report-section" style="grid-column:1/-1">
           <div class="report-section-title">⚠️ 리스크 요인</div>${risks}
-        </div>
-        <div class="report-section" style="grid-column:1/-1">
-          <div class="report-section-title">💼 ETF 추천</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
-            <div>${etfBlock(krEtfs,'🇰🇷 국내 ETF')}</div>
-            <div>${etfBlock(usEtfs,'🌐 해외 ETF')}</div>
-          </div>
         </div>
       </div>
     </div>`;
